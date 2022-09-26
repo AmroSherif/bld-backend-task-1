@@ -4,6 +4,7 @@ from django.http import JsonResponse, HttpResponse
 from django.views import View
 import shortuuid
 import json
+from .forms import CourseForms
 
 
 def read_db():
@@ -37,12 +38,15 @@ class Course(View):
         j_data = read_db()
         r_body = json.loads(request.body)
         new_course = self.create_course(r_body["name"], r_body["description"])
-
-        j_data["courses"].append(new_course)
-
-        write_db(j_data)
-        # created
-        return HttpResponse(status=201)
+        f = CourseForms(new_course)
+        if f.is_valid():
+            j_data["courses"].append(new_course)
+            write_db(j_data)
+            # created
+            return HttpResponse(status=201)
+        else:
+            # unprocessable Entity
+            return JsonResponse(data=json.loads(f.errors.as_json()), status=422)
 
 
 class SingleCourse(View):
@@ -69,12 +73,22 @@ class SingleCourse(View):
         r_body = json.loads(request.body)
         course_index = self.find_course(kwargs["id"], j_data)
         if course_index != -1:
-            self.update_course(
-                course_index, r_body["name"], r_body["description"], j_data
+            # ok
+            status_code = 200
+            f = CourseForms(
+                {"name": r_body["name"], "description": r_body["description"]}
             )
-        # ok / not found
-        status_code = 200 if course_index != -1 else 404
-        write_db(j_data)
+            if f.is_valid():
+                self.update_course(
+                    course_index, r_body["name"], r_body["description"], j_data
+                )
+                write_db(j_data)
+            else:
+                # unprocessable Entity
+                return JsonResponse(data=json.loads(f.errors.as_json()), status=422)
+        else:
+            # not found
+            status_code = 404
         return HttpResponse(status=status_code)
 
     def delete(self, request, *args, **kwargs):
